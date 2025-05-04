@@ -1,0 +1,94 @@
+@page "/summary/{pdfName}"
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+
+<h3>Summary</h3>
+
+@if (summaryText == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div>
+        @summaryText
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string pdfName { get; set; }
+
+    private string summaryText;
+    private string formattedSummary;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var username = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userEmail");
+            var password = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userPassword");
+
+            // Print username, password, and pdfName for debugging purposes
+            Console.WriteLine($"Username: {username}");
+            Console.WriteLine($"Password: {password}");
+            Console.WriteLine($"PDF Name: {pdfName}");
+
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(pdfName))
+            {
+                summaryText = "Invalid request. Missing parameters.";
+                StateHasChanged();
+                return;
+            }
+
+            await FetchPdfSummary(username, password);
+            StateHasChanged();
+        }
+    }
+
+    private async Task FetchPdfSummary(string username, string password)
+    {
+        var content = new FormUrlEncodedContent(new[]
+        {
+new KeyValuePair<string, string>("username", username),
+new KeyValuePair<string, string>("password", password),
+new KeyValuePair<string, string>("pdf_name", pdfName)
+});
+
+        try
+        {
+            var response = await Http.PostAsync("https://academic-research-mix-cactus.onrender.com/user/summary_pdf", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Get the response JSON
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+
+                // Assuming the API returns a JSON response with the summary in a field like 'summary'
+                var json = System.Text.Json.JsonDocument.Parse(jsonResponse);
+                if (json.RootElement.TryGetProperty("summary", out var summaryElement))
+                {
+                    formattedSummary = summaryElement.GetString();
+                    summaryText = formattedSummary;
+                }
+                else
+                {
+                    summaryText = "Summary not found in the response.";
+                }
+            }
+            else
+            {
+                summaryText = $"Failed to load summary. Status Code: {response.StatusCode}";
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            summaryText = $"Network error: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            summaryText = $"Unexpected error: {ex.Message}";
+        }
+    }
+}

@@ -1,0 +1,62 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            @if (isSignedIn)
+            {
+                <span>Welcome, @userName (@userEmail)</span>
+                <span>
+                    <img src="@profilePicture" alt="User Avatar" class="user-avatar" />
+                </span>
+            }
+            else
+            {
+                <a href="/signup" target="_blank">Login/Signup</a>
+            }
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool isSignedIn = false;
+    private string userEmail;
+    private string userName;
+    private string profilePicture; // URL or path for the profile picture
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                // Fetch user info from cookies
+                userEmail = await JSRuntime.InvokeAsync<string>("getCookie", "userEmail");
+                userName = await JSRuntime.InvokeAsync<string>("getCookie", "userName");
+                profilePicture = await JSRuntime.InvokeAsync<string>("getCookie", "profilePicture");
+
+                isSignedIn = !string.IsNullOrEmpty(userEmail);
+                StateHasChanged(); // Trigger re-render after JSInterop call
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching cookie: {ex.Message}");
+            }
+        }
+    }
+}

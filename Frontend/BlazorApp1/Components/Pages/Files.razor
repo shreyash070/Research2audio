@@ -1,0 +1,165 @@
+@page "/files"
+@inject NavigationManager NavigationManager
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<h3>Upload Research Paper</h3>
+
+<InputFile OnChange="OnInputFileChange" />
+<button @onclick="UploadFile">Upload</button>
+
+<p>@message</p>
+
+<h3>Your Uploaded PDFs</h3>
+@if (isLoading)
+{
+    <p>Loading...</p>
+}
+else if (uploadedPdfs.Count == 0)
+{
+    <p>No PDFs uploaded yet.</p>
+}
+else
+{
+    <ul class="list-unstyled">
+        @foreach (var pdf in uploadedPdfs)
+        {
+            <li class="mb-3">
+                @pdf
+                <button class="btn btn-primary ms-2" @onclick="() => NavigateToSummary(pdf)">Generate Summary</button>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private IBrowserFile file;
+    private string message = string.Empty;
+    private List<string> uploadedPdfs = new();
+    private bool isLoading = true;
+    private bool isInitialized = false;
+
+    private void OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        file = e.File;
+    }
+
+    private async Task UploadFile()
+    {
+        if (file == null)
+        {
+            message = "Please select a file.";
+            StateHasChanged();
+            return;
+        }
+
+        var content = new MultipartFormDataContent();
+        var fileContent = new StreamContent(file.OpenReadStream());
+        content.Add(fileContent, "file", file.Name);
+
+        var username = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "userEmail");
+        var password = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "userPassword");
+
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            message = "You must sign in first.";
+            StateHasChanged();
+            return;
+        }
+
+        content.Add(new StringContent(username), "username");
+        content.Add(new StringContent(password), "password");
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("Backend");
+            var response = await httpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/user/add_pdf", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                message = "File uploaded successfully!";
+                await LoadUploadedPdfs();
+            }
+            else
+            {
+                message = $"Failed to upload file. Status: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"An error occurred: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task LoadUploadedPdfs()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var username = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "userEmail");
+            var password = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "userPassword");
+
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                message = "You must sign in first.";
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            var httpClient = HttpClientFactory.CreateClient("Backend");
+            var response = await httpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/user/pdfs",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+{ "username", username },
+{ "password", password }
+                }));
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<PdfResponse>();
+                uploadedPdfs = result?.pdfs ?? new();
+            }
+            else
+            {
+                message = "Failed to load PDFs.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"An error occurred: {ex.Message}";
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private void NavigateToSummary(string pdfName)
+    {
+        // Pass PDF name, username, and password as query parameters
+        var username = JSRuntime.InvokeAsync<string>("localStorage.getItem", "userEmail").Result;
+        var password = JSRuntime.InvokeAsync<string>("localStorage.getItem", "userPassword").Result;
+
+        NavigationManager.NavigateTo($"/Summary?file={Uri.EscapeDataString(pdfName)}&username={Uri.EscapeDataString(username)}&password={Uri.EscapeDataString(password)}");
+    }
+
+    private class PdfResponse
+    {
+        public List<string> pdfs { get; set; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadUploadedPdfs();
+            isInitialized = true;
+            StateHasChanged();
+        }
+    }
+}

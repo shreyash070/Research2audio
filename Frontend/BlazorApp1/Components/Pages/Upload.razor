@@ -1,0 +1,261 @@
+@page "/upload"
+@inject NavigationManager NavigationManager
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<h3>Upload Research Paper</h3>
+
+<InputFile OnChange="OnInputFileChange" />
+<button @onclick="UploadFile">Upload</button>
+
+<p>@message</p>
+
+<h3>Your Uploaded PDFs</h3>
+@if (isLoading)
+{
+    <p>Loading...</p>
+}
+else if (uploadedPdfs.Count == 0)
+{
+    <p>No PDFs uploaded yet.</p>
+}
+else
+{
+    <ul class="list-unstyled">
+        @foreach (var pdf in uploadedPdfs)
+        {
+            <li class="mb-3">
+                @pdf
+                <button class="btn btn-primary ms-2" @onclick="() => GenerateSummary(pdf)">Generate Summary</button>
+                <button class="btn btn-success ms-2" @onclick="() => PlayPodcast(pdf)">Play Podcast</button>
+            </li>
+        }
+    </ul>
+}
+
+@if (!string.IsNullOrEmpty(generatedSummary))
+{
+    <h4>Generated Summary:</h4>
+    <p>@generatedSummary</p>
+}
+
+@if (!string.IsNullOrEmpty(audioUrl))
+{
+    <h4>Podcast Audio:</h4>
+    <audio controls autoplay>
+        <source src="@audioUrl" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+}
+
+@code {
+    private IBrowserFile file;
+    private string message = string.Empty;
+    private List<string> uploadedPdfs = new();
+    private bool isLoading = true;
+    private bool isInitialized = false;
+    private string generatedSummary = string.Empty;
+    private string audioUrl = string.Empty; // Store audio file URL
+
+    private void OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        file = e.File;
+    }
+
+    private async Task UploadFile()
+    {
+        if (file == null)
+        {
+            message = "Please select a file.";
+            StateHasChanged();
+            return;
+        }
+
+        var content = new MultipartFormDataContent();
+        var fileContent = new StreamContent(file.OpenReadStream());
+        content.Add(fileContent, "file", file.Name);
+
+        var username = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userEmail");
+        var password = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userPassword");
+
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            message = "You must sign in first.";
+            StateHasChanged();
+            return;
+        }
+
+        content.Add(new StringContent(username), "username");
+        content.Add(new StringContent(password), "password");
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("Backend");
+            var response = await httpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/user/add_pdf", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                message = "File uploaded successfully!";
+                await LoadUploadedPdfs();
+            }
+            else
+            {
+                message = $"Failed to upload file. Status: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"An error occurred: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task LoadUploadedPdfs()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var username = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userEmail");
+            var password = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userPassword");
+
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                message = "You must sign in first.";
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            var httpClient = HttpClientFactory.CreateClient("Backend");
+            var response = await httpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/user/pdfs",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+{ "username", username },
+{ "password", password }
+                }));
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<PdfResponse>();
+                uploadedPdfs = result?.pdfs ?? new();
+            }
+            else
+            {
+                message = "Failed to load PDFs.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"An error occurred: {ex.Message}";
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task GenerateSummary(string pdfName)
+    {
+        var username = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userEmail");
+        var password = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userPassword");
+
+        var content = new FormUrlEncodedContent(new Dictionary<string, string>
+{
+{ "username", username },
+{ "password", password },
+{ "pdf_name", pdfName }
+});
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("Backend");
+            var response = await httpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/user/summary_pdf",
+            content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+                var json = System.Text.Json.JsonDocument.Parse(jsonResponse);
+                string allValuesText = string.Empty;
+
+                foreach (var element in json.RootElement.EnumerateObject())
+                {
+                    allValuesText += $"{element.Value.GetString()}\n";
+                }
+
+                if (!string.IsNullOrEmpty(allValuesText))
+                {
+                    await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "generatedSummary", allValuesText);
+                    generatedSummary = allValuesText;
+                }
+                else
+                {
+                    generatedSummary = "No values found in the response.";
+                }
+            }
+            else
+            {
+                generatedSummary = "Failed to generate summary.";
+            }
+        }
+        catch (Exception ex)
+        {
+            generatedSummary = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task PlayPodcast(string pdfName)
+    {
+        var username = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userEmail");
+        var password = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "userPassword");
+
+        var content = new FormUrlEncodedContent(new Dictionary<string, string>
+{
+{ "username", username },
+{ "password", password },
+{ "pdf_name", pdfName }
+});
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("Backend");
+            var response = await httpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/user/podcast_pdf",
+            content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var audioBytes = await response.Content.ReadAsByteArrayAsync();
+                var audioBase64 = Convert.ToBase64String(audioBytes);
+                audioUrl = $"data:audio/mpeg;base64,{audioBase64}";
+            }
+            else
+            {
+                message = $"Failed to generate podcast. Status: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    private class PdfResponse
+    {
+        public List<string> pdfs { get; set; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadUploadedPdfs();
+            isInitialized = true;
+            StateHasChanged();
+        }
+    }
+}

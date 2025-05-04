@@ -1,0 +1,109 @@
+@page "/signup"
+@inject NavigationManager NavigationManager
+@inject HttpClient HttpClient
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Sign In or Sign Up</PageTitle>
+
+<h1>Sign In or Sign Up</h1>
+
+<div>
+    <label for="email">Email:</label>
+    <input type="email" id="email" @bind="userEmail" placeholder="Enter your email" class="form-control" />
+</div>
+
+<div class="mt-3">
+    <label for="password">Password:</label>
+    <input type="password" id="password" @bind="userPassword" placeholder="Enter your password" class="form-control" />
+</div>
+
+<button class="btn btn-primary mt-3" @onclick="SignIn">Sign In</button>
+<button class="btn btn-success mt-3 ms-2" @onclick="SignUp">Sign Up</button>
+
+<p class="mt-2 text-info">@message</p>
+
+@code {
+    private string userEmail = string.Empty;
+    private string userPassword = string.Empty;
+    private string message = string.Empty;
+
+    private async Task SignIn()
+    {
+        if (string.IsNullOrWhiteSpace(userEmail) || string.IsNullOrWhiteSpace(userPassword))
+        {
+            message = "Please enter both email and password.";
+            StateHasChanged();
+            return;
+        }
+
+        var formData = new MultipartFormDataContent();
+        formData.Add(new StringContent(userEmail), "username");
+        formData.Add(new StringContent(userPassword), "password");
+
+        try
+        {
+            var response = await HttpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/login", formData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                message = "Sign-in successful! Redirecting...";
+                await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "userEmail", userEmail);
+                await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "userPassword", userPassword);
+
+                StateHasChanged();
+                await Task.Delay(2000);
+                NavigationManager.NavigateTo("/upload");
+            }
+            else
+            {
+                message = "Invalid email or password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"An error occurred: {ex.Message}";
+        }
+    }
+
+    private async Task SignUp()
+    {
+        if (string.IsNullOrWhiteSpace(userEmail) || string.IsNullOrWhiteSpace(userPassword))
+        {
+            message = "Please enter both email and password.";
+            StateHasChanged();
+            return;
+        }
+
+        var formData = new MultipartFormDataContent();
+        formData.Add(new StringContent(userEmail), "username");
+        formData.Add(new StringContent(userPassword), "password");
+
+        try
+        {
+            var response = await HttpClient.PostAsync("https://academic-research-mix-cactus.onrender.com/register", formData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                message = "Registration successful! You can now sign in.";
+                await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "userEmail", userEmail);
+                await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "userPassword", userPassword);
+
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                message = "User already exists. Please try logging in.";
+            }
+            else
+            {
+                message = "Registration failed. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"An error occurred: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+}

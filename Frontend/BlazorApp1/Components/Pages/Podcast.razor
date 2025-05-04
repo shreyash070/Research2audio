@@ -1,0 +1,32 @@
+@page "/podcast/{fileId}"
+@inject HttpClient Http
+
+<h3>Podcast</h3>
+
+<audio controls src="@audioUrl"></audio>
+<a href="@downloadUrl" download>Download Podcast</a>
+
+@code {
+    [Parameter]
+    public string fileId { get; set; }
+
+    private string audioUrl;
+    private string downloadUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var response = await Http.PostAsJsonAsync($"http://localhost:8000/generate-audio/{fileId}", new { });
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await response.Content.ReadFromJsonAsync<PodcastResult>();
+            audioUrl = result.audio_url;
+            downloadUrl = $"http://localhost:8000/download/{fileId}";
+        }
+    }
+
+    private class PodcastResult
+    {
+        public string file_id { get; set; }
+        public string audio_url { get; set; }
+    }
+}
