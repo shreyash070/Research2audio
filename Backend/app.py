@@ -19,7 +19,7 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 app = Flask(__name__)
 
 # MongoDB connection string with your credentials
-uri = "mongodb+srv://Shreyash:Connect@cluster0.3bukhbc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+uri = ""
 
 # Connect to MongoDB
 client = MongoClient(uri)
