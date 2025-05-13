@@ -9,7 +9,7 @@ from urllib.parse import quote_plus
 chat_map = {}
 
 # Set up Gemini API key (replace with your key)
-GOOGLE_API_KEY = "AIzaSyAnAVJRwF6IOTQbJ4tVqWAIT-jT5K-hUiY" 
+GOOGLE_API_KEY = "" 
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Initialize Gemini model
